@@ -71,13 +71,11 @@ def _(pl):
 
 @app.cell
 def _(mo, pl, titles):
-    # Preview
-
     mo.hstack([
-        mo.stat(label="Titres", value=f"{titles.height:,}".replace(",", " ")),
-        mo.stat(label="Films", value=f"{titles.filter(pl.col('titleType') == 'movie').height:,}".replace(",", " ")),
-        mo.stat(label="Séries", value=f"{titles.filter(pl.col('titleType') != 'movie').height:,}".replace(",", " ")),
-        mo.stat(label="Note moyenne", value=f"{titles['averageRating'].mean():.2f}"),
+        mo.stat(label="Titles", value=f"{titles.height:,}".replace(",", " ")),
+        mo.stat(label="Movies", value=f"{titles.filter(pl.col('titleType') == 'movie').height:,}".replace(",", " ")),
+        mo.stat(label="Series", value=f"{titles.filter(pl.col('titleType') != 'movie').height:,}".replace(",", " ")),
+        mo.stat(label="Average rating", value=f"{titles['averageRating'].mean():.2f}"),
     ])
     return
 
@@ -155,17 +153,17 @@ def _(alt, by_runtime, mo, movies, pl, runtime_corr):
     _sample = _sample.sample(min(3_000, _sample.height), seed=42)
 
     _points = alt.Chart(_sample).mark_circle(opacity=0.25, size=20).encode(
-        x=alt.X("runtimeMinutes:Q", title="Lenght (min)"),
+        x=alt.X("runtimeMinutes:Q", title="Length (min)"),
         y=alt.Y("averageRating:Q", title="IMDb rating", scale=alt.Scale(domain=[1, 10])),
         tooltip=["primaryTitle", "startYear", "runtimeMinutes", "averageRating"],
     )
     _line = alt.Chart(by_runtime).mark_line(color="crimson", strokeWidth=3).encode(
         x="tranche_min:Q",
-        y="note_moyenne:Q",
+        y="average_rating:Q",   # <- était "note_moyenne:Q"
     )
 
     mo.vstack([
-        mo.md(f"## <i class='ri-hourglass-2-fill'></i> Lenght vs rating — Pearson correlation : **{runtime_corr:.3f}**"),
+        mo.md(f"## <i class='ri-hourglass-2-fill'></i> Length vs rating — Pearson correlation : **{runtime_corr:.3f}**"),
         mo.ui.altair_chart(_points + _line),
     ])
     return
@@ -184,7 +182,7 @@ def _(pl, titles):
             n=pl.len(),
             average_rating=pl.col("averageRating").mean(),
             median_rating=pl.col("averageRating").median(),
-            median_lenght=pl.col("runtimeMinutes").median(),
+            median_length=pl.col("runtimeMinutes").median(),
         )
         .sort("decade")
     )
@@ -223,7 +221,7 @@ def _(alt, genres_df, pl):
     )
     alt.Chart(genre_trend).mark_area().encode(
         x="decade:O",
-        y=alt.Y("part:Q", stack="normalize", title="Share of movies"),
+        y=alt.Y("part:Q", stack="normalize", title="Share of genre tags"),
         color="genre:N",
         tooltip=["genre", "decade", alt.Tooltip("part:Q", format=".1%")],
     )
