@@ -15,10 +15,70 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.Html(
-        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css">'
+    def kpi(label, value):
+        return mo.Html(
+            f'<div class="kpi"><div class="kpi-label">{label}</div>'
+            f'<div class="kpi-value">{value}</div></div>'
+        )
+
+    mo.Html("""
+    <div class="hide-cell"></div>
+    <style>
+    @import url("https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css");
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+    /* Masque cette cellule en app view uniquement (reste visible et éditable en mode édition) */
+    .marimo-cell:not(.interactive):has(.hide-cell),
+    .marimo-cell:not(.interactive):empty { display: none; }
+
+    :root {
+      --marimo-text-font: 'Inter', system-ui, -apple-system, sans-serif;
+      --marimo-heading-font: 'Inter', system-ui, -apple-system, sans-serif;
+      --marimo-monospace-font: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
+    h1 { font-size: 1.9rem; margin: 0.5rem 0 0.25rem; }
+    h2 { font-size: 1.2rem; margin-top: 2.2rem; padding-bottom: 0.5rem;
+         border-bottom: 1px solid var(--border); }
+    h1 i, h2 i { color: var(--primary); margin-right: 0.35rem; }
+
+    .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+           padding: 14px 18px; min-width: 150px; }
+    .kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+                 color: var(--muted-foreground); font-weight: 500; }
+    .kpi-value { font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
+    </style>
+    """)
+    return (kpi,)
+
+
+@app.cell
+def _(mo):
+    _dark = mo.app_meta().theme == "dark"
+    pal = (
+        dict(text="#eceeed", muted="#aab2af", border="#3b403e", alpha=0.6,
+             cat=["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c", "#9085e9", "#e66767"])
+        if _dark else
+        dict(text="#0f172a", muted="#64748b", border="#e2e8f0", alpha=0.35,
+             cat=["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"])
     )
-    return
+
+    def themed(chart):
+        font = "Inter, system-ui, sans-serif"
+        return chart.configure(
+            background="transparent",
+            view=dict(stroke=None),
+            axis=dict(gridColor=pal["border"], domainColor=pal["border"], tickColor=pal["border"],
+                      labelColor=pal["muted"], titleColor=pal["muted"], labelFont=font, titleFont=font,
+                      labelFontSize=11, titleFontSize=11, titleFontWeight=500),
+            legend=dict(labelColor=pal["text"], titleColor=pal["muted"], labelFont=font, titleFont=font,
+                        labelFontSize=11, titleFontSize=11, titleFontWeight=500, symbolType="circle"),
+            range=dict(category=pal["cat"]),
+            mark=dict(color=pal["cat"][0]),
+            title=dict(color=pal["text"], font=font),
+        )
+
+    return pal, themed
 
 
 @app.cell
@@ -70,13 +130,13 @@ def _(pl):
 
 
 @app.cell
-def _(mo, pl, titles):
+def _(kpi, mo, pl, titles):
     mo.hstack([
-        mo.stat(label="Titles", value=f"{titles.height:,}".replace(",", " ")),
-        mo.stat(label="Movies", value=f"{titles.filter(pl.col('titleType') == 'movie').height:,}".replace(",", " ")),
-        mo.stat(label="Series", value=f"{titles.filter(pl.col('titleType') != 'movie').height:,}".replace(",", " ")),
-        mo.stat(label="Average rating", value=f"{titles['averageRating'].mean():.2f}"),
-    ])
+        kpi("Titles", f"{titles.height:,}".replace(",", " ")),
+        kpi("Movies", f"{titles.filter(pl.col('titleType') == 'movie').height:,}".replace(",", " ")),
+        kpi("Series", f"{titles.filter(pl.col('titleType') != 'movie').height:,}".replace(",", " ")),
+        kpi("Average rating", f"{titles['averageRating'].mean():.2f}"),
+    ], widths="equal", gap=1)
     return
 
 
@@ -146,25 +206,25 @@ def _(pl, titles):
 
 
 @app.cell
-def _(alt, by_runtime, mo, movies, pl, runtime_corr):
+def _(alt, by_runtime, mo, movies, pal, pl, runtime_corr, themed):
     # Correlation between film length and ratings
 
     _sample = movies.filter(pl.col("numVotes") >= 5_000)
     _sample = _sample.sample(min(3_000, _sample.height), seed=42)
 
-    _points = alt.Chart(_sample).mark_circle(opacity=0.25, size=20).encode(
+    _points = alt.Chart(_sample).mark_circle(opacity=pal["alpha"], size=20).encode(
         x=alt.X("runtimeMinutes:Q", title="Length (min)"),
         y=alt.Y("averageRating:Q", title="IMDb rating", scale=alt.Scale(domain=[1, 10])),
         tooltip=["primaryTitle", "startYear", "runtimeMinutes", "averageRating"],
     )
-    _line = alt.Chart(by_runtime).mark_line(color="crimson", strokeWidth=3).encode(
+    _line = alt.Chart(by_runtime).mark_line(color=pal["cat"][1], strokeWidth=3).encode(
         x="tranche_min:Q",
-        y="average_rating:Q",   # <- était "note_moyenne:Q"
+        y="average_rating:Q",
     )
 
     mo.vstack([
         mo.md(f"## <i class='ri-hourglass-2-fill'></i> Length vs rating — Pearson correlation : **{runtime_corr:.3f}**"),
-        mo.ui.altair_chart(_points + _line),
+        mo.ui.altair_chart(themed(_points + _line)),
     ])
     return
 
@@ -191,7 +251,7 @@ def _(pl, titles):
 
 
 @app.cell
-def _(alt, by_decade, mo):
+def _(alt, by_decade, mo, themed):
     _notes = alt.Chart(by_decade).mark_line(point=True).encode(
         x=alt.X("decade:O", title="Decade"),
         y=alt.Y("average_rating:Q", title="Average rating", scale=alt.Scale(zero=False)),
@@ -204,13 +264,13 @@ def _(alt, by_decade, mo):
     )
     mo.vstack([
         mo.md("## <i class='ri-calendar-2-line'></i> Trends by decade"),
-        mo.hstack([_notes, _volume]),
+        mo.hstack([themed(_notes), themed(_volume)]),
     ])
     return
 
 
 @app.cell
-def _(alt, genres_df, pl):
+def _(alt, genres_df, pl, themed):
     genre_trend = (
         genres_df
         .filter((pl.col("titleType") == "movie") & pl.col("startYear").is_between(1950, 2029))
@@ -219,11 +279,13 @@ def _(alt, genres_df, pl):
         .agg(n=pl.len())
         .with_columns(part=pl.col("n") / pl.col("n").sum().over("decade"))
     )
-    alt.Chart(genre_trend).mark_area().encode(
-        x="decade:O",
-        y=alt.Y("part:Q", stack="normalize", title="Share of genre tags"),
-        color="genre:N",
-        tooltip=["genre", "decade", alt.Tooltip("part:Q", format=".1%")],
+    themed(
+        alt.Chart(genre_trend).mark_area().encode(
+            x="decade:O",
+            y=alt.Y("part:Q", stack="normalize", title="Share of genre tags"),
+            color="genre:N",
+            tooltip=["genre", "decade", alt.Tooltip("part:Q", format=".1%")],
+        )
     )
     return
 
