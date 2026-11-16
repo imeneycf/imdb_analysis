@@ -12,6 +12,7 @@ An interactive [marimo](https://marimo.io) notebook that explores several hundre
 | **Trends by decade** | Average rating and number of titles per decade, split by title type (movie, series, mini-series). |
 | **Genre mix over time** | Share of each genre among movies, decade by decade (normalized stacked area chart). |
 | **Top 25 series** | Series ranked with a weighted (Bayesian) rating, next to the raw top by rating and the top by number of votes. |
+| **Random pick** | Filter by type, genre, years, runtime, minimum rating and votes, then draw a random title. The result is placed in context: its rating percentile, the size of the filtered pool, and the rating distribution of that pool. |
 
 ## Data
  
@@ -81,3 +82,6 @@ marimo run imdb_analysis.py
 6. Runtime analysis (correlation, trend)
 7. Decade analysis
 8. Series rankings
+9. Random pick (filters, pool, draw)
+
+marimo notebooks are reactive: changing a slider or filter re-runs only the cells that depend on it.

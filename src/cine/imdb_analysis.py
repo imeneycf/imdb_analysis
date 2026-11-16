@@ -323,5 +323,129 @@ def _(mo, pl, series):
     return
 
 
+@app.cell
+def _(genres_df, mo):
+    all_genres = sorted(genres_df["genre"].unique().to_list())
+    f_type = mo.ui.radio(["Movies", "Series"], value="Movies", inline=True, label="Type")
+    f_genres = mo.ui.multiselect(all_genres, label="Genres (all if empty)")
+    f_years = mo.ui.range_slider(1920, 2025, step=1, value=(1980, 2025), label="Years", show_value=True)
+    f_runtime = mo.ui.range_slider(40, 240, step=5, value=(70, 180), label="Runtime (min)", show_value=True)
+    f_rating = mo.ui.slider(1, 10, step=0.1, value=6.0, label="Min rating", show_value=True)
+    f_votes = mo.ui.slider(1_000, 200_000, step=1_000, value=20_000, label="Min votes", show_value=True)
+    draw = mo.ui.button(label="Draw a title", kind="success", value=0, on_click=lambda v: v + 1)
+
+    view_pick_filters = mo.vstack([
+        mo.md("## <i class='ri-dice-line'></i> Random pick"),
+        mo.hstack([f_type, f_genres], justify="start", gap=2),
+        mo.hstack([f_years, f_runtime], justify="start", gap=2),
+        mo.hstack([f_rating, f_votes], justify="start", gap=2),
+        draw,
+    ])
+    return (
+        draw,
+        f_genres,
+        f_rating,
+        f_runtime,
+        f_type,
+        f_votes,
+        f_years,
+        view_pick_filters,
+    )
+
+
+@app.cell
+def _(f_genres, f_rating, f_runtime, f_type, f_votes, f_years, pl, titles):
+    _types = ["movie"] if f_type.value == "Movies" else ["tvSeries", "tvMiniSeries"]
+    base = titles.filter(pl.col("titleType").is_in(_types))
+    pool = base.filter(
+        pl.col("startYear").is_between(*f_years.value)
+        & pl.col("runtimeMinutes").is_between(*f_runtime.value)
+        & (pl.col("averageRating") >= f_rating.value)
+        & (pl.col("numVotes") >= f_votes.value)
+    )
+    if f_genres.value:
+        _sel = list(f_genres.value)
+        pool = pool.filter(pl.col("genres").list.eval(pl.element().is_in(_sel)).list.any())
+    return base, pool
+
+
+@app.cell
+def _(alt, base, draw, kpi, mo, pal, pl, pool, themed):
+    draw  # re-triggers the cell with each click
+    if pool.height == 0:
+        view_pick_result = mo.md("**No title matches these filters.** Loosen one of them.")
+    else:
+        pick = pool.sample(1).row(0, named=True)
+        _pct = (base["averageRating"] < pick["averageRating"]).mean() * 100
+        _hist = (
+            pool.with_columns(bin=(pl.col("averageRating") * 4).floor() / 4)
+            .group_by("bin").len()
+            .with_columns(bin2=pl.col("bin") + 0.25)
+        )
+        _bars = alt.Chart(_hist).mark_bar().encode(
+            x=alt.X("bin:Q", title="Rating (titles in the filtered pool)",
+                    scale=alt.Scale(domain=[1, 10.25], nice=False)),
+            x2="bin2:Q",
+            y=alt.Y("len:Q", title="Titles"),
+            y2=alt.datum(0),
+        ).properties(width=620, height=240)
+        _rule = alt.Chart(pl.DataFrame({"r": [pick["averageRating"]]})).mark_rule(
+            color=pal["cat"][1], strokeWidth=3).encode(x="r:Q")
+
+        view_pick_result = mo.vstack([
+            mo.md(f"### [{pick['primaryTitle']}](https://www.imdb.com/title/{pick['tconst']}/) "
+                  f"({pick['startYear']}) · {', '.join(pick['genres'])}"),
+            mo.hstack([
+                kpi("Rating", f"{pick['averageRating']:.1f}"),
+                kpi("Votes", f"{pick['numVotes']:,}".replace(",", " ")),
+                kpi("Runtime", f"{pick['runtimeMinutes']} min"),
+                kpi("Better than", f"{_pct:.0f} %"),
+                kpi("Pool size", f"{pool.height:,}".replace(",", " ")),
+            ], widths="equal", gap=1),
+            mo.ui.altair_chart(themed(_bars + _rule)),
+        ])
+    return (view_pick_result,)
+
+
+@app.cell
+def _(mo):
+    mo.sidebar([
+        mo.md("## <i class='ri-clapperboard-fill'></i> IMDb"),
+        mo.nav_menu({
+            "#/": "Overview",
+            "#/genres": "Genres",
+            "#/time": "Time",
+            "#/series": "Series",
+            "#/pick": "Random pick",
+        }, orientation="vertical"),
+    ])
+    return
+
+
+@app.cell
+def _(
+    min_votes_genre,
+    mo,
+    view_best,
+    view_decade,
+    view_genre_trend,
+    view_overview,
+    view_pick_filters,
+    view_pick_result,
+    view_runtime,
+    view_series_tops,
+    view_top_series,
+):
+    mo.routes({
+        "#/": lambda: view_overview,
+        "#/genres": lambda: mo.vstack([min_votes_genre, view_best, view_genre_trend]),
+        "#/time": lambda: mo.vstack([view_runtime, view_decade]),
+        "#/series": lambda: mo.vstack([view_top_series, view_series_tops]),
+        "#/pick": lambda: mo.vstack([view_pick_filters, view_pick_result]),
+        mo.routes.CATCH_ALL: lambda: view_overview,
+    })
+    return
+
+
 if __name__ == "__main__":
     app.run()
